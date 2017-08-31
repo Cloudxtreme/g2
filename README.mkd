@@ -1,0 +1,109 @@
+# g2
+
+This is a replacement for my old 'gaf' program, to version control arbitrary
+config files and the like.
+
+`gaf` was a moderately complex shell script, but it was way over-engineered.
+Despite that, it had some rough spots in the workflow.  Hence this program --
+hopefully simpler means better.
+
+It would have been called 'gaf2' but that's 4 characters... and all useful
+unix commands should be 3 or less.  Ideally 2.
+
+# why and what
+
+(Note that there are many other programs like this; it's probably one of those
+things that everyone writes once in their life!)
+
+Very briefly: a daily backup is a fine thing, but for a lot of "config" files,
+it also helps to annotate changes (i.e., "when did I make this change and
+why?").
+
+For instance, all users have files like `.bashrc`, `.vimrc`, etc.  Some users
+have a further set of rc and config files unique to themselves (one example
+from my laptop is the "gitolite-test" userid, and of course "root" almost
+always has its own aliases and functions).  Finally, the system itself has
+many such files (for example the sudoers file, the sshd config, etc.)
+
+Using g2, you can save each of these different "sets" of files into its own
+branch.
+
+# how
+
+Install `g2` itself, and its [one dependency][raw] on each machine you wish to
+use this in (just toss the two scripts in /usr/local/bin or something).  Then
+do this:
+
+**One-time stuff**
+
+1.  create a server repo somewhere that all machines can access by some URL
+    (like `ssh://user@host/g2.git`, etc).  Let's call this `$URL`.
+
+2.  from any one machine, exactly once, run `g2 INIT $URL`.
+
+3.  on each user+machine that wishes to use this, run once `g2 SETUP $URL`.
+
+4.  on each user+machine that wishes to use a branch, run once `g2 USE $branch`.
+
+That's it for the one-time stuff.  If you add a new machine, repeat step 3
+once and step 4 for each branch that machine will use.  If you add a new
+branch, repeat step 4 on all machines which need that branch.
+
+**Regular stuff**
+
+The day-to-day work is mostly git-ish things like 'git add -f', 'git commit'
+and 'git push'.  If you run `g2` without any arguments, you'll see the basic
+commands.
+
+**Just don't use the 'master' branch for anything -- leave it alone!**
+
+Also, **run `g2 save $branch` if you wish to save meta-data**.  (Meta data is
+only owner, group, and permissions; we don't do extended attributes etc.)
+Doing this for system files (e.g. those in /etc) is likely to be pretty
+important.
+
+Finally, note that 'git checkout' is blocked, to prevent you losing your local
+changes accidentally!  However, if you have a local alias for checkout, you
+should consider blocking that also; see "extra details" section below.
+
+# extra details
+
+1.  The INIT sub-command sets up a master branch with one `.gitignore` file
+    containing exactly one line:
+
+        /*
+
+    Thus, by default, all files are ignored.  Only files you `git add -f` will
+    be tracked.
+
+2.  **The `master` branch will be used as the start point for all other
+    branches, but `master` itself will never be updated any more.  It stays at
+    this commit forever.**
+
+3.  The SETUP sub-command creates a `..git` (note two dots!) directory and a
+    `.gitignore` file in your `$PWD`.
+
+4.  Since git checkout is somewhat dangerous in this type of use, the script
+    blocks it.  It also blocks what I believe is the most common alias for
+    'checkout', which is 'co'.  If you use a different alias, you may want to
+    add it to the script to block it too.
+
+5.  All the actual files go into branches.  (To illustrate, my g2 repo has a
+    branch called "users" with files common to all users, branches called
+    "sitaram", "gitolite-test", "root", (and a few more) for specific users,
+    and branches called "sys-laptop", "sys-workdesktop", "root-workdesktop",
+    "sitaram-workdesktop", and so on).
+
+# appendix a: the active-aliases script
+
+You need to install my [active-aliases][aa] script.  This is a single file, so
+you can also just download [the script itself][raw] and put it somewhere in
+`$PATH`.  Yes the script filename is `__` (two underscores)!
+
+(Strictly speaking, converting `g2` to plain bash is almost trivial except for
+the `save` sub-command.  Even that can be done with a little masochism.
+Which, sadly, I lack).
+
+[aa]: https://github.com/sitaramc/active-aliases
+[raw]: https://raw.githubusercontent.com/sitaramc/active-aliases/master/__
+

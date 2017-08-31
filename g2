@@ -1,0 +1,195 @@
+#!/bin/bash
+
+# TODO: make RESTORE work *with* operands
+
+# caution: little to no error checking!
+
+##  usage:
+##      git [...]                   # most git subcommands will work, except 'checkout'
+##      g2 save <branch> <file/dir list...> [-m <commit message>]
+##          # git add -f + git commit in one shot.  Also adds and commits metadata (uid, gid, perms)
+##      g2 sw <branch>              # switch to branch (like checkout but without affecting the working directory)
+##      g2 sa                       # quick status of all branches
+##      g2 sd <branch> [diff options]   # switch and diff one branch
+##
+##  (one-time or rarely used sub-commands):
+##      g2 INIT <URL>               # one-time for the entire system
+##      g2 SETUP <URL>              # one-time for each user
+##      g2 USE <branch>             # use a (possibly new) branch at this user
+
+export ME=$0
+export GIT_DIR=$PWD/..git
+export GIT_WORK_TREE=$PWD
+
+# name of this binary
+
+__ $0 "$@"
+
+exit $?
+
+#!__
+
+INIT$
+    @echo needs a remote URL
+INIT %
+    @echo URL does not exist or is not an empty repo
+    ?   qx(git ls-remote %1 2>&1) =~ /\S/
+INIT %
+    @rm -rf tmp.g2.INIT
+    mkdir   tmp.g2.INIT
+    cd      tmp.g2.INIT
+    unset GIT_DIR
+    unset GIT_WORK_TREE
+    git init
+    git remote add origin %1
+    echo '/*' > .gitignore
+    git add -f  .gitignore
+    git commit -m start
+    git push -u origin master
+    cd ..
+    rm -rf tmp.g2.INIT
+
+SETUP$
+    @echo needs a remote URL
+SETUP
+    @echo .gitignore already exists!
+    ?   -e ".gitignore"
+SETUP
+    @echo .git already exists!
+    ?   -e ".git"
+SETUP %
+    @git init
+    git config alias.checkout '! echo sorry no checkout here.'
+    git config alias.co '! echo sorry no checkout here.'
+    git remote add origin %1
+    git remote update
+    [ ".gitignore" = "$(git archive origin/master | tar tf -)" ] || exec echo origin/master has unexpected files
+    git archive origin/master | tar xf -
+    $ME USE master
+
+# ----------------------------------------------------------------------
+^$
+    -h
+-h
+    @grep ^## $ME | cut -c5-
+
+# ----------------------------------------------------------------------
+# USE -- start using a new branch (new for this user; it may already be on the
+# 'origin' remote, if it is shared with other users).
+USE %$
+    @git branch %1 origin/%1 2>/dev/null || {
+        git branch %1 master
+        git push -u origin %1
+    }
+    git status -sb
+    $ME sw %1
+
+# ----------------------------------------------------------------------
+# switch branch
+sw %
+    @git symbolic-ref HEAD refs/heads/%1
+    git reset
+    ## git status -sb
+
+# ----------------------------------------------------------------------
+# save -- must have done 'NEW' already
+save %
+    save %1
+    ?   $ENV{_MSG} = "%1 refresh"
+save % %%$
+    save %1 %2
+    ?   $ENV{_MSG} = "%1: %2"
+save %% -m %
+    save %1
+    ?   $ENV{_MSG} = "%1: %2"
+save %$
+    save %1 `git ls-tree -r --name-only %1`
+save % %%
+    @$ME sw %1
+    git add -f %2
+    $ME save-meta > ~/.g2-meta.%1
+    git add -f ~/.g2-meta.%1
+    git commit -m "$_MSG"
+
+RESTORE %
+    @git archive %1 | tar xf -
+    $ME restore-meta < ~/.g2-meta.%1
+
+# ----------------------------------------------------------------------
+# quick status
+sa$
+    @for i in `$ME branches`
+    do
+        $ME _s $i
+    done
+_s %
+    @echo switching to %1
+    $ME sw %1
+    # sw itself shows the status; no need to 'diff --status'
+
+# ----------------------------------------------------------------------
+# switch and diff
+sd %
+    @$ME sw %1
+    git diff
+
+# ----------------------------------------------------------------------
+# note: this sub-command is experimental and undocumented at present; if
+# someone is interested please email me at sitaramc@gmail.com and I will
+# develop it further.
+
+# ut is "untracked"; helps maintain and periodically review the list of
+# untracked files.  The known-untracked list is manually (and presumably
+# selectively) updated by the user, from within vimdiff.  (fiab == files in
+# all branches; k-ut == known-untracked).  We only consider siblings of
+# tracked files for this purpose.
+ut
+    @map -1 "git ls-tree -r --name-only" `$ME branches` | sort -u > ~/tmp/junk.g2.fiab
+    map -1 "echo %D" < ~/tmp/junk.g2.fiab | uniq | sort -u | map "find % -maxdepth 1" | sed -e 's/^\.\///' | sort -u | grep -v -f ~/tmp/junk.g2.fiab > ~/tmp/junk.g2.ut
+    touch   ~/tmp/junk.g2.k-ut
+    vimdiff ~/tmp/junk.g2.{ut,k-ut}
+
+# ----------------------------------------------------------------------
+# service routines -- best not call them directly
+
+# though, having said that, this one is pretty harmless!
+branches
+    @git for-each-ref refs/heads --format="%(refname:short)" | grep -v master
+
+save-meta
+    @true
+    ?   for (`git ls-files -c | sort`) {
+            chomp;
+            my @s = stat($_) or next;
+            print "fail $_" unless @s;
+            my $m = $s[2] & 07777;
+            my $u = ( $> == $s[4] ) ? "" : getpwuid $s[4];
+            my $g = ( $) == $s[5] ) ? "" : getgrgid $s[5];
+            printf "%" . "04o\t%s\t%s\t%s\n", $m, $u, $g, $_;
+        }; 1
+
+restore-meta
+    @true
+    ?   while (<>) {
+            chomp;
+            my ($m, $u, $g, $n) = split /\t/, $_, 4;
+            unless ( $> ) {
+                # only root can set u/g
+                $u = ($u ? getpwnam($u) : $>);
+                $g = ($g ? getgrnam($g) : $));
+                $g =~ s/ .*//;  # could be a space-separated list; we want only the first number
+                chown $u, $g, $n;
+            }
+            chmod oct($m), $n;  # must come after chown because chown resets suid bit (if present in $m)
+        }; 1
+
+# ----------------------------------------------------------------------
+# everything else is a git command
+
+co
+    checkout
+checkout
+    @echo sorry no checkout here!
+
+%
+    git %1
