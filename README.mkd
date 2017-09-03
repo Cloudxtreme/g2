@@ -66,6 +66,34 @@ Finally, note that 'git checkout' is blocked, to prevent you losing your local
 changes accidentally!  However, if you have a local alias for checkout, you
 should consider blocking that also; see "extra details" section below.
 
+# tips (and other sub-commands)
+
+*   to enable use for the system itself (as opposed to an actual user), just
+    `cd /`, then run the SETUP sub-command, then something like `g2 USE
+    laptop`.  It works just the same, since g2 only looks for `..git` in the
+    current directory.
+
+*   use the `sa` subcommand to get a quick status of all branches.  I actually
+    do this from root (this is of course aliased to some convenient short
+    command in my active-aliases rc file):
+
+        cd; map -1 "su --login -c 'g2 sa' %; echo" gitolite-test webuser sitaram; g2 sa; cd /; g2 sa
+
+    This runs 'sa' on the 3 most often used non-root users I have on my
+    laptop, then root itself, then the *system* itself.
+
+*   when `sa` reports any differences, use `sd` to see a diff.  As the help
+    message says, sd can take any git-diff options, so for example you could
+    say:
+
+        g2 sd foo --color-words --word-diff-regex=.
+
+*   you could also `sw` (switch) to the appropriate branch, and then run **any
+    git command**:
+
+        g2 sw foo
+        g2 dcw      # where my ~/.gitconfig defines dcw as 'diff --color-words'
+
 # extra details
 
 1.  The INIT sub-command sets up a master branch with one `.gitignore` file
